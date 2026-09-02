@@ -1,5 +1,5 @@
-from diskScanner import get_disks, scan_disk
-from folderScanner import get_folder_size, get_subfolders
+from core.diskScanner import get_disks, scan_disk
+from core.folderScanner import get_folder_size, get_subfolders
 
 
 def format_size(size):
