@@ -1,5 +1,12 @@
 from core.diskScanner import get_disks, scan_disk
 from core.folderScanner import get_folder_size, get_subfolders
+from core.fileScanner import get_large_files
+from core.categories import get_file_category
+from core.detector import (
+    detect_special_folders,
+    detect_temporary_folders,
+    find_duplicates
+)
 
 
 def format_size(size):
@@ -18,7 +25,7 @@ def format_size(size):
 
 
 def scan_drive(drive):
-    """Scan all folders inside a drive."""
+    """Scan all folders and large files inside a drive."""
 
     print(f"\nDRIVE: {drive}")
     print("-" * 45)
@@ -29,11 +36,146 @@ def scan_drive(drive):
         print("No accessible folders found.")
         return
 
+    # ---------------------------------------------
+    # Show folder sizes
+    # ---------------------------------------------
+
+    print("\nFolders:")
+    print("-" * 45)
+
     for folder in folders:
 
         size = get_folder_size(folder)
 
-        print(f"  {folder.name:<25} {format_size(size)}")
+        print(
+            f"  {folder.name:<25} "
+            f"{format_size(size)}"
+        )
+
+    # ---------------------------------------------
+    # Show largest files
+    # ---------------------------------------------
+
+    print("\nLargest Files:")
+    print("-" * 45)
+
+    large_files = get_large_files(drive)
+
+    if not large_files:
+
+        print("  No large files found.")
+
+    else:
+
+        for index, (file, size) in enumerate(
+            large_files,
+            start=1
+        ):
+
+            category = get_file_category(file)
+
+            print(f"\n  {index}. {file.name}")
+            print(f"     Location: {file.parent}")
+            print(f"     Category: {category}")
+            print(f"     Size: {format_size(size)}")
+
+
+def show_detective_findings(drive):
+    """Show intelligent findings about storage usage."""
+
+    print("\n")
+    print("=" * 45)
+    print("           DETECTIVE FINDINGS")
+    print("=" * 45)
+
+    # ---------------------------------------------
+    # Special folders
+    # ---------------------------------------------
+
+    print("\nSPECIAL FOLDERS")
+    print("-" * 45)
+
+    special_results = detect_special_folders(drive)
+
+    if special_results:
+
+        for result in special_results:
+
+            print(f"\n  {result['name']}")
+            print(f"  Location: {result['path']}")
+            print(f"  Size: {format_size(result['size'])}")
+
+    else:
+
+        print("  No special folders found.")
+
+    # ---------------------------------------------
+    # Temporary / cache folders
+    # ---------------------------------------------
+
+    print("\nTEMPORARY / CACHE")
+    print("-" * 45)
+
+    temp_results = detect_temporary_folders(drive)
+
+    if temp_results:
+
+        for result in temp_results:
+
+            print(f"\n  {result['name']}")
+            print(f"  Location: {result['path']}")
+            print(f"  Size: {format_size(result['size'])}")
+
+    else:
+
+        print("  No temporary or cache folders found.")
+
+    # ---------------------------------------------
+    # Actual duplicate files
+    # ---------------------------------------------
+
+    print("\nACTUAL DUPLICATES")
+    print("-" * 45)
+
+    duplicate_results = find_duplicates(drive)
+
+    if duplicate_results:
+
+        print(
+            f"  Found {len(duplicate_results)} "
+            f"duplicate groups."
+        )
+
+        for index, result in enumerate(
+            duplicate_results[:10],
+            start=1
+        ):
+
+            files = result["files"]
+            file_size = result["size"]
+
+            wasted_space = (
+                file_size * (len(files) - 1)
+            )
+
+            print(f"\n  {index}. {files[0].name}")
+            print(f"     Copies: {len(files)}")
+            print(
+                f"     File size: "
+                f"{format_size(file_size)}"
+            )
+            print(
+                f"     Wasted space: "
+                f"{format_size(wasted_space)}"
+            )
+
+            for file in files:
+
+                print(f"        {file}")
+
+    else:
+
+        print("  No meaningful duplicate files found.")
 
 
 def main():
@@ -48,31 +190,59 @@ def main():
 
     disks = get_disks()
 
+    if not disks:
+
+        print("\nNo disks found.")
+        return
+
     print("\nAvailable Disks:")
 
     for index, disk in enumerate(disks):
-        print(f"  {index}. {disk.mountpoint}")
+
+        print(
+            f"  {index}. "
+            f"{disk.mountpoint}"
+        )
 
     # ------------------------------------------------
-    # 2. Show disk information for every disk
+    # 2. Show disk information
     # ------------------------------------------------
 
     for index, disk in enumerate(disks):
 
         result = scan_disk(index)
 
-        print(f"\nDisk Information - {result['drive']}:")
-        print(f"  Total Space : {format_size(result['total'])}")
-        print(f"  Used Space  : {format_size(result['used'])}")
-        print(f"  Free Space  : {format_size(result['free'])}")
-        print(f"  Used        : {result['used_percent']}%")
+        print(
+            f"\nDisk Information - "
+            f"{result['drive']}:"
+        )
+
+        print(
+            f"  Total Space : "
+            f"{format_size(result['total'])}"
+        )
+
+        print(
+            f"  Used Space  : "
+            f"{format_size(result['used'])}"
+        )
+
+        print(
+            f"  Free Space  : "
+            f"{format_size(result['free'])}"
+        )
+
+        print(
+            f"  Used        : "
+            f"{result['used_percent']}%"
+        )
 
     # ------------------------------------------------
-    # 3. Scan folders inside every disk
+    # 3. Storage analysis
     # ------------------------------------------------
 
     print("\n" + "=" * 45)
-    print("             FOLDER ANALYSIS")
+    print("             STORAGE ANALYSIS")
     print("=" * 45)
 
     for disk in disks:
@@ -82,7 +252,17 @@ def main():
         scan_drive(drive)
 
     # ------------------------------------------------
-    # 4. Scan completed
+    # 4. Detective findings
+    # ------------------------------------------------
+
+    for disk in disks:
+
+        drive = disk.mountpoint
+
+        show_detective_findings(drive)
+
+    # ------------------------------------------------
+    # 5. Scan completed
     # ------------------------------------------------
 
     print("\n" + "=" * 45)
@@ -92,4 +272,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
