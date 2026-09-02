@@ -1,5 +1,5 @@
 from diskScanner import get_disks, scan_disk
-from folderScanner import get_folder_size
+from folderScanner import get_folder_size, get_subfolders
 
 
 def format_size(size):
@@ -17,12 +17,35 @@ def format_size(size):
     return f"{size} bytes"
 
 
+def scan_drive(drive):
+    """Scan all folders inside a drive."""
+
+    print(f"\nDRIVE: {drive}")
+    print("-" * 45)
+
+    folders = get_subfolders(drive)
+
+    if not folders:
+        print("No accessible folders found.")
+        return
+
+    for folder in folders:
+
+        size = get_folder_size(folder)
+
+        print(f"  {folder.name:<25} {format_size(size)}")
+
+
 def main():
+
     print("=" * 45)
     print("          DISK SPACE DETECTIVE")
     print("=" * 45)
 
-    # Find available disks
+    # ------------------------------------------------
+    # 1. Find available disks
+    # ------------------------------------------------
+
     disks = get_disks()
 
     print("\nAvailable Disks:")
@@ -30,24 +53,37 @@ def main():
     for index, disk in enumerate(disks):
         print(f"  {index}. {disk.mountpoint}")
 
-    # Scan the first disk
-    if disks:
-        result = scan_disk(0)
+    # ------------------------------------------------
+    # 2. Show disk information for every disk
+    # ------------------------------------------------
 
-        print("\nDisk Information:")
-        print(f"  Drive       : {result['drive']}")
+    for index, disk in enumerate(disks):
+
+        result = scan_disk(index)
+
+        print(f"\nDisk Information - {result['drive']}:")
         print(f"  Total Space : {format_size(result['total'])}")
         print(f"  Used Space  : {format_size(result['used'])}")
         print(f"  Free Space  : {format_size(result['free'])}")
         print(f"  Used        : {result['used_percent']}%")
 
-    # Test folder scanner
-    folder = "C:/Users"
-    size = get_folder_size(folder)
+    # ------------------------------------------------
+    # 3. Scan folders inside every disk
+    # ------------------------------------------------
 
-    print("\nFolder Information:")
-    print(f"  Folder      : {folder}")
-    print(f"  Total Size  : {format_size(size)}")
+    print("\n" + "=" * 45)
+    print("             FOLDER ANALYSIS")
+    print("=" * 45)
+
+    for disk in disks:
+
+        drive = disk.mountpoint
+
+        scan_drive(drive)
+
+    # ------------------------------------------------
+    # 4. Scan completed
+    # ------------------------------------------------
 
     print("\n" + "=" * 45)
     print("       Scan completed successfully!")
@@ -56,3 +92,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
