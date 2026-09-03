@@ -1,4 +1,4 @@
-from core.diskScanner import get_disks, scan_disk
+from core.diskScanner import get_disks, scan_disk,get_disk_status
 from core.folderScanner import get_folder_size, get_subfolders
 
 
@@ -36,6 +36,7 @@ def scan_drive(drive):
         print(f"  {folder.name:<25} {format_size(size)}")
 
 
+
 def main():
 
     print("=" * 45)
@@ -67,6 +68,8 @@ def main():
         print(f"  Free Space  : {format_size(result['free'])}")
         print(f"  Used        : {result['used_percent']}%")
 
+        health=get_disk_status(result['used_percent'])
+        print(f"Status:{health}")
     # ------------------------------------------------
     # 3. Scan folders inside every disk
     # ------------------------------------------------
