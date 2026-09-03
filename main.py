@@ -1,6 +1,6 @@
 import time
 
-from core.diskScanner import get_disks
+from core.diskScanner import get_disks,get_disk_status
 from core.diskScanner import scan_disk
 from core.quickScanner import quick_scan
 from core.scanner import scan_filesystem
@@ -139,7 +139,9 @@ def show_quick_scan(location):
                 f"{disk_info['used_percent']}%"
             )
             health=get_disk_status(result['used_percent'])
-        print(f"Status:{health}")
+            print(
+                f"Status:      "
+                f"{health}")
     # ------------------------------------------------
     # 3. Scan folders inside every disk
     # ------------------------------------------------
