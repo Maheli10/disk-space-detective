@@ -2,10 +2,17 @@ from core.diskScanner import get_disks, scan_disk
 from core.folderScanner import get_folder_size, get_subfolders
 from core.fileScanner import get_large_files
 from core.categories import get_file_category
+
 from core.detector import (
     detect_special_folders,
     detect_temporary_folders,
     find_duplicates
+)
+
+from core.analyzer import (
+    analyze_folders,
+    analyze_file_categories,
+    find_old_files
 )
 
 
@@ -103,7 +110,10 @@ def show_detective_findings(drive):
 
             print(f"\n  {result['name']}")
             print(f"  Location: {result['path']}")
-            print(f"  Size: {format_size(result['size'])}")
+            print(
+                f"  Size: "
+                f"{format_size(result['size'])}"
+            )
 
     else:
 
@@ -124,7 +134,10 @@ def show_detective_findings(drive):
 
             print(f"\n  {result['name']}")
             print(f"  Location: {result['path']}")
-            print(f"  Size: {format_size(result['size'])}")
+            print(
+                f"  Size: "
+                f"{format_size(result['size'])}"
+            )
 
     else:
 
@@ -158,12 +171,21 @@ def show_detective_findings(drive):
                 file_size * (len(files) - 1)
             )
 
-            print(f"\n  {index}. {files[0].name}")
-            print(f"     Copies: {len(files)}")
+            print(
+                f"\n  {index}. "
+                f"{files[0].name}"
+            )
+
+            print(
+                f"     Copies: "
+                f"{len(files)}"
+            )
+
             print(
                 f"     File size: "
                 f"{format_size(file_size)}"
             )
+
             print(
                 f"     Wasted space: "
                 f"{format_size(wasted_space)}"
@@ -171,11 +193,126 @@ def show_detective_findings(drive):
 
             for file in files:
 
-                print(f"        {file}")
+                print(
+                    f"        {file}"
+                )
 
     else:
 
-        print("  No meaningful duplicate files found.")
+        print(
+            "  No meaningful duplicate "
+            "files found."
+        )
+
+
+def show_smart_analysis(drive):
+    """Show smart analysis of storage usage."""
+
+    print("\n")
+    print("=" * 45)
+    print("             SMART ANALYSIS")
+    print("=" * 45)
+
+    # ---------------------------------------------
+    # Biggest folders
+    # ---------------------------------------------
+
+    print("\nBIGGEST FOLDERS")
+    print("-" * 45)
+
+    folders = analyze_folders(drive)
+
+    if folders:
+
+        for index, folder in enumerate(
+            folders,
+            start=1
+        ):
+
+            print(
+                f"\n  {index}. "
+                f"{folder['name']}"
+            )
+
+            print(
+                f"     Size: "
+                f"{format_size(folder['size'])}"
+            )
+
+            print(
+                f"     Location: "
+                f"{folder['path']}"
+            )
+
+    else:
+
+        print("  No folders found.")
+
+    # ---------------------------------------------
+    # File categories
+    # ---------------------------------------------
+
+    print("\nFILE CATEGORIES")
+    print("-" * 45)
+
+    categories = analyze_file_categories(drive)
+
+    if categories:
+
+        for index, category in enumerate(
+            categories,
+            start=1
+        ):
+
+            print(
+                f"  {index}. "
+                f"{category['category']}: "
+                f"{format_size(category['size'])}"
+            )
+
+    else:
+
+        print("  No file categories found.")
+
+    # ---------------------------------------------
+    # Old files
+    # ---------------------------------------------
+
+    print("\nOLD FILES")
+    print("-" * 45)
+
+    old_files = find_old_files(drive)
+
+    if old_files:
+
+        for index, file in enumerate(
+            old_files,
+            start=1
+        ):
+
+            print(
+                f"\n  {index}. "
+                f"{file['name']}"
+            )
+
+            print(
+                f"     Size: "
+                f"{format_size(file['size'])}"
+            )
+
+            print(
+                f"     Modified: "
+                f"{file['modified']}"
+            )
+
+            print(
+                f"     Location: "
+                f"{file['path']}"
+            )
+
+    else:
+
+        print("  No old files found.")
 
 
 def main():
@@ -262,7 +399,17 @@ def main():
         show_detective_findings(drive)
 
     # ------------------------------------------------
-    # 5. Scan completed
+    # 5. Smart analysis
+    # ------------------------------------------------
+
+    for disk in disks:
+
+        drive = disk.mountpoint
+
+        show_smart_analysis(drive)
+
+    # ------------------------------------------------
+    # 6. Scan completed
     # ------------------------------------------------
 
     print("\n" + "=" * 45)
