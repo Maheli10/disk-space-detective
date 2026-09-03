@@ -138,7 +138,7 @@ def show_quick_scan(location):
                 f"Usage:       "
                 f"{disk_info['used_percent']}%"
             )
-            health=get_disk_status(result['used_percent'])
+            health=get_disk_status(disk_info['used_percent'])
             print(
                 f"Status:      "
                 f"{health}")
