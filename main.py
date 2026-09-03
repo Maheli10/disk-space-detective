@@ -1,544 +1,483 @@
-from core.diskScanner import get_disks, scan_disk
-from core.folderScanner import get_folder_size, get_subfolders
-from core.fileScanner import get_large_files
-from core.categories import get_file_category
+import time
 
-from core.detector import (
-    detect_special_folders,
-    detect_temporary_folders,
-    find_duplicates
-)
-
-from core.analyzer import (
-    analyze_folders,
-    analyze_file_categories,
-    find_old_files
-)
-
+from core.diskScanner import get_disks
+from core.diskScanner import scan_disk
+from core.quickScanner import quick_scan
+from core.scanner import scan_filesystem
 from core.recommendations import generate_all_recommendations
 
 
 def format_size(size):
-    """Convert bytes into a readable size."""
 
-    if size >= 1024 ** 3:
-        return f"{size / (1024 ** 3):.2f} GB"
+    units = [
+        "B",
+        "KB",
+        "MB",
+        "GB",
+        "TB"
+    ]
 
-    if size >= 1024 ** 2:
-        return f"{size / (1024 ** 2):.2f} MB"
+    size = float(size)
 
-    if size >= 1024:
-        return f"{size / 1024:.2f} KB"
+    for unit in units:
 
-    return f"{size} bytes"
+        if size < 1024:
+            return f"{size:.2f} {unit}"
+
+        size /= 1024
+
+    return f"{size:.2f} PB"
 
 
-def run_quick_scan(drive):
-    """Run a fast scan for basic disk information and large files."""
+def select_location():
 
-    print("\n")
-    print("=" * 45)
-    print("              QUICK SCAN")
-    print("=" * 45)
+    partitions = get_disks()
 
-    print(f"\nDrive: {drive}")
-    print("-" * 45)
+    print("\nAVAILABLE DRIVES")
 
-    # Get basic disk information
+    for index, partition in enumerate(partitions):
 
-    disks = get_disks()
+        print(
+            f"  {index}. "
+            f"{partition.mountpoint}"
+        )
 
-    selected_disk = None
+    print("  F. Choose a specific folder")
 
-    for disk in disks:
-        if disk.mountpoint == drive:
-            selected_disk = disk
-            break
+    choice = input("\nSelect location: ").strip()
 
-    if selected_disk is None:
-        print("Unable to find selected drive.")
+    if choice.lower() == "f":
+
+        folder = input(
+            "Enter folder path: "
+        ).strip()
+
+        return folder
+
+    try:
+
+        index = int(choice)
+
+        if index < 0 or index >= len(partitions):
+            raise ValueError
+
+        return partitions[index].mountpoint
+
+    except ValueError:
+
+        print("Invalid selection.")
+        return None
+
+
+def show_quick_scan(location):
+
+    print("\n" + "=" * 50)
+    print("⚡ QUICK SCAN")
+    print("=" * 50)
+
+    print(f"\nScanning: {location}")
+
+    start_time = time.perf_counter()
+
+    try:
+
+        result = quick_scan(location)
+
+    except Exception as error:
+
+        print(f"\nScan failed: {error}")
         return
 
-    usage = scan_disk(
-        disks.index(selected_disk)
-    )
+    elapsed = time.perf_counter() - start_time
 
-    print("\nDISK INFORMATION")
-    print("-" * 45)
+    print("\nSTORAGE")
+    print("-" * 50)
+
+    try:
+
+        partitions = get_disks()
+
+        matching_drive = None
+
+        for partition in partitions:
+
+            if partition.mountpoint.lower() == str(
+                location
+            ).lower():
+
+                matching_drive = partition.mountpoint
+                break
+
+        if matching_drive:
+
+            disk_info = scan_disk(
+                partitions.index(
+                    next(
+                        p for p in partitions
+                        if p.mountpoint == matching_drive
+                    )
+                )
+            )
+
+            print(
+                f"Total:       "
+                f"{format_size(disk_info['total'])}"
+            )
+
+            print(
+                f"Used:        "
+                f"{format_size(disk_info['used'])}"
+            )
+
+            print(
+                f"Free:        "
+                f"{format_size(disk_info['free'])}"
+            )
+
+            print(
+                f"Usage:       "
+                f"{disk_info['used_percent']}%"
+            )
+
+    except (
+        PermissionError,
+        OSError,
+        ValueError,
+        StopIteration
+    ):
+        pass
+
+    print("\n📁 TOP 3 LARGEST FOLDERS")
+    print("-" * 50)
+
+    if result["top_folders"]:
+
+        for folder in result["top_folders"]:
+
+            print(
+                f"{folder['name']:<25} "
+                f"{format_size(folder['size'])}"
+            )
+
+    else:
+
+        print("No folders found.")
+
+    print("\n📄 TOP 3 LARGE FILES")
+    print("-" * 50)
+
+    if result["top_files"]:
+
+        for file in result["top_files"]:
+
+            print(
+                f"{file['name']:<25} "
+                f"{format_size(file['size'])}"
+            )
+
+    else:
+
+        print("No files over 100 MB found.")
+
+    print("\n🔎 QUICK FINDINGS")
+    print("-" * 50)
+
+    if result["special_folders"]:
+
+        for folder in result["special_folders"]:
+
+            print(
+                f"{folder['name']:<30} "
+                f"{format_size(folder['size'])}"
+            )
+
+    else:
+
+        print("No notable storage findings.")
+
+    print("\nSUMMARY")
+    print("-" * 50)
 
     print(
-        f"  Total Space : "
-        f"{format_size(usage['total'])}"
+        f"Scanned Size: "
+        f"{format_size(result['total_size'])}"
     )
 
     print(
-        f"  Used Space  : "
-        f"{format_size(usage['used'])}"
+        f"Scan Time: "
+        f"{elapsed:.2f} seconds"
+    )
+
+    print("\nQuick Scan completed successfully.")
+
+
+def show_deep_scan(location):
+
+    print("\n" + "=" * 50)
+    print("🔎 DEEP SCAN")
+    print("=" * 50)
+
+    print(f"\nScanning: {location}")
+
+    start_time = time.perf_counter()
+
+    try:
+
+        result = scan_filesystem(location)
+
+    except Exception as error:
+
+        print(f"\nScan failed: {error}")
+        return
+
+    elapsed = time.perf_counter() - start_time
+
+    print("\nSTORAGE")
+    print("-" * 50)
+
+    print(
+        f"Scanned Size: "
+        f"{format_size(result['total_size'])}"
     )
 
     print(
-        f"  Free Space  : "
-        f"{format_size(usage['free'])}"
+        f"Scan Time: "
+        f"{elapsed:.2f} seconds"
     )
 
-    print(
-        f"  Used        : "
-        f"{usage['used_percent']}%"
-    )
+    print("\nLARGEST FOLDERS")
+    print("-" * 50)
 
-    # Find large files
+    if result["top_level_folders"]:
+
+        for folder in result["top_level_folders"][:10]:
+
+            print(
+                f"{folder['name']:<25} "
+                f"{format_size(folder['size'])}"
+            )
+
+    else:
+
+        print("No folders found.")
 
     print("\nLARGEST FILES")
-    print("-" * 45)
+    print("-" * 50)
 
-    print("  Minimum size: 100 MB")
-    print("  Maximum results: 10")
+    if result["large_files"]:
 
-    large_files = get_large_files(
-        drive,
-        min_size=100 * 1024 * 1024,
-        limit=10
-    )
+        for file in result["large_files"]:
 
-    if not large_files:
-        print("\n  No files larger than 100 MB found.")
+            print(
+                f"{file['name']:<25} "
+                f"{format_size(file['size'])}"
+            )
+
     else:
-        for index, (file, size) in enumerate(
-            large_files,
-            start=1
-        ):
-            category = get_file_category(file)
 
-            print(f"\n  {index}. {file.name}")
+        print("No large files found.")
 
-            print(
-                f"     Location: "
-                f"{file.parent}"
-            )
+    print("\nFILE CATEGORIES")
+    print("-" * 50)
+
+    if result["categories"]:
+
+        for category in result["categories"]:
 
             print(
-                f"     Category: "
-                f"{category}"
+                f"{category['category']:<20} "
+                f"{format_size(category['size'])}"
             )
 
-            print(
-                f"     Size: "
-                f"{format_size(size)}"
-            )
-
-    print("\n" + "=" * 45)
-    print("       Quick scan completed!")
-    print("=" * 45)
-
-
-def scan_drive(drive):
-    """Scan folders and large files inside a drive."""
-
-    print(f"\nDRIVE: {drive}")
-    print("-" * 45)
-
-    folders = get_subfolders(drive)
-
-    if not folders:
-        print("No accessible folders found.")
-        return
-
-    print("\nFolders:")
-    print("-" * 45)
-
-    for folder in folders:
-        size = get_folder_size(folder)
-
-        print(
-            f"  {folder.name:<25} "
-            f"{format_size(size)}"
-        )
-
-    print("\nLargest Files:")
-    print("-" * 45)
-
-    large_files = get_large_files(drive)
-
-    if not large_files:
-        print("  No large files found.")
-        return
-
-    for index, (file, size) in enumerate(
-        large_files,
-        start=1
-    ):
-        category = get_file_category(file)
-
-        print(f"\n  {index}. {file.name}")
-        print(f"     Location: {file.parent}")
-        print(f"     Category: {category}")
-        print(f"     Size: {format_size(size)}")
-
-
-def show_detective_findings(drive):
-    """Show intelligent findings about storage usage."""
-
-    print("\n")
-    print("=" * 45)
-    print("           DETECTIVE FINDINGS")
-    print("=" * 45)
-
-    print("\nSPECIAL FOLDERS")
-    print("-" * 45)
-
-    special_results = detect_special_folders(drive)
-
-    if special_results:
-        for result in special_results:
-            print(f"\n  {result['name']}")
-            print(f"  Location: {result['path']}")
-            print(
-                f"  Size: "
-                f"{format_size(result['size'])}"
-            )
     else:
-        print("  No special folders found.")
 
-    print("\nTEMPORARY / CACHE")
-    print("-" * 45)
+        print("No categories found.")
 
-    temp_results = detect_temporary_folders(drive)
+    print("\nOLD FILES")
+    print("-" * 50)
 
-    if temp_results:
-        for result in temp_results:
-            print(f"\n  {result['name']}")
-            print(f"  Location: {result['path']}")
+    if result["old_files"]:
+
+        for file in result["old_files"]:
+
             print(
-                f"  Size: "
-                f"{format_size(result['size'])}"
+                f"{file['name']:<25} "
+                f"{format_size(file['size'])}"
             )
+
     else:
-        print("  No temporary or cache folders found.")
 
-    print("\nACTUAL DUPLICATES")
-    print("-" * 45)
+        print("No old files found.")
 
-    duplicate_results = find_duplicates(drive)
+    print("\nDETECTIVE FINDINGS")
+    print("-" * 50)
 
-    if duplicate_results:
-        print(
-            f"  Found {len(duplicate_results)} "
-            f"duplicate groups."
-        )
+    if result["special_folders"]:
 
-        for index, result in enumerate(
-            duplicate_results[:10],
-            start=1
-        ):
-            files = result["files"]
-            file_size = result["size"]
-
-            wasted_space = (
-                file_size * (len(files) - 1)
-            )
+        for folder in result["special_folders"]:
 
             print(
-                f"\n  {index}. "
-                f"{files[0].name}"
-            )
-
-            print(
-                f"     Copies: "
-                f"{len(files)}"
-            )
-
-            print(
-                f"     File size: "
-                f"{format_size(file_size)}"
-            )
-
-            print(
-                f"     Wasted space: "
-                f"{format_size(wasted_space)}"
-            )
-
-            for file in files:
-                print(f"        {file}")
-    else:
-        print(
-            "  No meaningful duplicate "
-            "files found."
-        )
-
-    return {
-        "special": special_results,
-        "temporary": temp_results,
-        "duplicates": duplicate_results
-    }
-
-
-def show_smart_analysis(drive):
-    """Show smart analysis of storage usage."""
-
-    print("\n")
-    print("=" * 45)
-    print("             SMART ANALYSIS")
-    print("=" * 45)
-
-    print("\nBIGGEST FOLDERS")
-    print("-" * 45)
-
-    folders = analyze_folders(drive)
-
-    if folders:
-        for index, folder in enumerate(
-            folders,
-            start=1
-        ):
-            print(
-                f"\n  {index}. "
-                f"{folder['name']}"
-            )
-
-            print(
-                f"     Size: "
+                f"{folder['name']:<30} "
                 f"{format_size(folder['size'])}"
             )
 
             print(
-                f"     Location: "
-                f"{folder['path']}"
+                f"  {folder['path']}"
             )
+
     else:
-        print("  No folders found.")
 
-    print("\nFILE CATEGORIES")
-    print("-" * 45)
+        print("No special folders found.")
 
-    categories = analyze_file_categories(drive)
+    print("\nTEMPORARY / CACHE FOLDERS")
+    print("-" * 50)
 
-    if categories:
-        for index, category in enumerate(
-            categories,
-            start=1
-        ):
+    if result["cache_folders"]:
+
+        for folder in result["cache_folders"]:
+
             print(
-                f"  {index}. "
-                f"{category['category']}: "
-                f"{format_size(category['size'])}"
+                f"{folder['name']:<30} "
+                f"{format_size(folder['size'])}"
             )
+
     else:
-        print("  No file categories found.")
 
-    print("\nOLD FILES")
-    print("-" * 45)
+        print("No large temporary/cache folders found.")
 
-    old_files = find_old_files(drive)
+    print("\nDUPLICATE CANDIDATES")
+    print("-" * 50)
 
-    if old_files:
-        for index, file in enumerate(
-            old_files,
-            start=1
-        ):
-            print(
-                f"\n  {index}. "
-                f"{file['name']}"
-            )
+    if result["duplicate_candidates"]:
+
+        for size, paths in result[
+            "duplicate_candidates"
+        ].items():
 
             print(
-                f"     Size: "
-                f"{format_size(file['size'])}"
+                f"{len(paths)} files with size "
+                f"{format_size(size)}"
             )
 
-            print(
-                f"     Modified: "
-                f"{file['modified']}"
-            )
-
-            print(
-                f"     Location: "
-                f"{file['path']}"
-            )
     else:
-        print("  No old files found.")
 
-    return {
-        "folders": folders,
-        "categories": categories,
-        "old_files": old_files
-    }
+        print("No duplicate candidates found.")
 
+    print("\nSUMMARY")
+    print("-" * 50)
 
-def show_recommendations(
-    drive,
-    smart_results,
-    detective_results
-):
-    """Show recommendations using existing scan results."""
-
-    print("\n")
-    print("=" * 45)
-    print("           RECOMMENDATIONS")
-    print("=" * 45)
-
-    folders = smart_results["folders"]
-    old_files = smart_results["old_files"]
-
-    duplicates = detective_results["duplicates"]
-    temp_folders = detective_results["temporary"]
-
-    recommendations = generate_all_recommendations(
-        folders=folders,
-        duplicates=duplicates,
-        old_files=old_files,
-        temp_folders=temp_folders
+    print(
+        f"Files analyzed:       "
+        f"{len(result['files'])}"
     )
 
-    if not recommendations:
-        print("\n  No recommendations at this time.")
-        return
+    print(
+        f"Folders analyzed:     "
+        f"{len(result['folder_sizes'])}"
+    )
 
-    for index, recommendation in enumerate(
-        recommendations,
-        start=1
-    ):
-        print(
-            f"\n  {index}. "
-            f"{recommendation['type']}"
-        )
+    print(
+        f"Large files:          "
+        f"{len(result['large_files'])}"
+    )
 
-        print(
-            f"     {recommendation['message']}"
-        )
+    print(
+        f"Old files:            "
+        f"{len(result['old_files'])}"
+    )
 
-        print(
-            f"     Related size: "
-            f"{format_size(recommendation['size'])}"
-        )
+    print(
+        f"Special folders:      "
+        f"{len(result['special_folders'])}"
+    )
+
+    print(
+        f"Cache folders:        "
+        f"{len(result['cache_folders'])}"
+    )
+
+    print(
+        f"Duplicate candidates: "
+        f"{len(result['duplicate_candidates'])}"
+    )
+
+    print("\nDeep Scan completed successfully.")
+
+    recommendations = generate_all_recommendations(
+        folders=result["special_folders"],
+        duplicates=[],
+        old_files=result["old_files"],
+        temp_folders=result["cache_folders"]
+    )
+
+    print("\nRECOMMENDATIONS")
+    print("-" * 50)
+
+    if recommendations:
+
+        for recommendation in recommendations:
+
+            print(
+                f"\n{recommendation['type']}"
+            )
+
+            print(
+                f"{recommendation['message']}"
+            )
+
+            print(
+                f"Potential space: "
+                f"{format_size(recommendation['size'])}"
+            )
+
+    else:
+
+        print("No recommendations at this time.")
 
 
 def main():
 
-    print("=" * 45)
-    print("          DISK SPACE DETECTIVE")
-    print("=" * 45)
+    while True:
 
-    # 1. Find available disks
+        print("\n" + "=" * 50)
+        print("🕵️ DISK SPACE DETECTIVE")
+        print("=" * 50)
 
-    disks = get_disks()
+        print("\nSCAN MODE")
+        print("  1. ⚡ Quick Scan")
+        print("  2. 🔎 Deep Scan")
+        print("  3. Exit")
 
-    if not disks:
-        print("\nNo disks found.")
-        return
+        mode = input(
+            "\nSelect scan mode: "
+        ).strip()
 
-    print("\nAvailable Disks:")
+        if mode == "3":
+            print("\nGoodbye!")
+            break
 
-    for index, disk in enumerate(disks):
-        print(
-            f"  {index}. "
-            f"{disk.mountpoint}"
-        )
+        if mode not in {"1", "2"}:
 
-    # 2. Run Quick Scan
+            print("\nInvalid option.")
+            continue
 
-    print("\n" + "=" * 45)
-    print("             SCAN MODE")
-    print("=" * 45)
+        location = select_location()
 
-    print("\n  1. Quick Scan")
-    print("  2. Full Scan")
-
-    choice = input("\nSelect scan mode: ").strip()
-
-    if choice not in {"1", "2"}:
-        print("\nInvalid choice.")
-        return
-
-    # Select drive
-
-    print("\nAvailable Drives:")
-
-    for index, disk in enumerate(disks):
-        print(
-            f"  {index}. "
-            f"{disk.mountpoint}"
-        )
-
-    drive_choice = input(
-        "\nSelect drive: "
-    ).strip()
-
-    try:
-        drive_index = int(drive_choice)
-
-        if drive_index < 0 or drive_index >= len(disks):
-            print("\nInvalid drive selection.")
-            return
-
-    except ValueError:
-        print("\nPlease enter a valid number.")
-        return
-
-    drive = disks[drive_index].mountpoint
-
-    # Quick Scan
-
-    if choice == "1":
-
-        run_quick_scan(drive)
-        return
-
-    # 3. Show disk information
-
-    for index, disk in enumerate(disks):
-
-        result = scan_disk(index)
+        if location is None:
+            continue
 
         print(
-            f"\nDisk Information - "
-            f"{result['drive']}:"
+            f"\nSelected location: "
+            f"{location}"
         )
 
-        print(
-            f"  Total Space : "
-            f"{format_size(result['total'])}"
-        )
+        if mode == "1":
 
-        print(
-            f"  Used Space  : "
-            f"{format_size(result['used'])}"
-        )
+            show_quick_scan(location)
 
-        print(
-            f"  Free Space  : "
-            f"{format_size(result['free'])}"
-        )
+        elif mode == "2":
 
-        print(
-            f"  Used        : "
-            f"{result['used_percent']}%"
-        )
-
-    # 4. Storage analysis
-
-    print("\n" + "=" * 45)
-    print("             STORAGE ANALYSIS")
-    print("=" * 45)
-
-    scan_drive(drive)
-
-    # 5, 6 and 7. Findings, analysis and recommendations
-
-    detective_results = show_detective_findings(drive)
-
-    smart_results = show_smart_analysis(drive)
-
-    show_recommendations(
-        drive,
-        smart_results,
-        detective_results
-    )
-
-    # 8. Scan completed
-
-    print("\n" + "=" * 45)
-    print("       Full scan completed successfully!")
-    print("=" * 45)
+            show_deep_scan(location)
 
 
 if __name__ == "__main__":
