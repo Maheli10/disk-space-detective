@@ -1,8 +1,12 @@
 from pathlib import Path
 
 
-def get_large_files(folder_path, min_size=100 * 1024 * 1024):
-    """Find the 10 largest files above the minimum size."""
+def get_large_files(
+    folder_path,
+    min_size=100 * 1024 * 1024,
+    limit=10
+):
+    """Find the largest files above the minimum size."""
 
     folder = Path(folder_path)
     large_files = []
@@ -20,8 +24,9 @@ def get_large_files(folder_path, min_size=100 * 1024 * 1024):
         except (PermissionError, OSError):
             continue
 
-    # Sort files from largest to smallest
-    large_files.sort(key=lambda file: file[1], reverse=True)
+    large_files.sort(
+        key=lambda file: file[1],
+        reverse=True
+    )
 
-    # Return only the 10 largest files
-    return large_files[:10]
+    return large_files[:limit]
