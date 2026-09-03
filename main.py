@@ -138,6 +138,11 @@ def show_quick_scan(location):
                 f"Usage:       "
                 f"{disk_info['used_percent']}%"
             )
+            health=get_disk_status(result['used_percent'])
+        print(f"Status:{health}")
+    # ------------------------------------------------
+    # 3. Scan folders inside every disk
+    # ------------------------------------------------
 
     except (
         PermissionError,
